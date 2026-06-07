@@ -1665,9 +1665,14 @@ void main() {
 
       function updateLabels(bodies, proj, view) {
         const activeNames = new Set();
+        const moonLabelZoomThreshold = 2; // moon labels only visible when zoomed in past this distance
 
         for (const body of bodies) {
           if (body.isSun && state.camera.distance > 80) continue;
+          if (body.type === 'moon' && state.camera.distance > moonLabelZoomThreshold) {
+            if (labelElements.has(body.name)) labelElements.get(body.name).style.display = 'none';
+            continue;
+          }
           activeNames.add(body.name);
 
           const screen = projectToScreen(body.pos, proj, view);
