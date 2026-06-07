@@ -296,6 +296,9 @@
         <button class="nav-btn" style="width: 100%; height: auto; padding: 6px; font-size: 0.72rem; margin: 3px 0" onclick="applyPreset('inner')">
           Inner System
         </button>
+        <button class="nav-btn" style="width: 100%; height: auto; padding: 6px; font-size: 0.72rem; margin: 3px 0" onclick="applyPreset('overhead')">
+          Overhead
+        </button>
       </div>
 
       <div id="nav-controls">
@@ -1183,13 +1186,16 @@ void main() {
       // Scale body size based on slider
       function scaleBodySize(radiusKm, distanceAU) {
         const t = state.sizeScale / 100;
-        const auToScene = 1.0;
-        const realSize = (radiusKm / AU_KM) * auToScene;
-        if (t >= 0.95) return realSize * 2; // realistic (x2 for diameter)
-        // Exaggerated: visible at overview scales
-        const minVisible = 0.04 + (1 - t) * 0.08;
-        const exaggerated = Math.max(minVisible, realSize * (500 * (1 - t) + 50 * t));
-        return exaggerated;
+        const realSize = (radiusKm / AU_KM) * 2; // diameter in AU
+        if (t <= 0.05) return realSize; // fully realistic
+        // Log-scale radius so large bodies don't dominate
+        // Sun=696340km, Earth=6371km — log ratio compresses Sun much more
+        const logRadius = Math.log10(radiusKm + 1); // ~5.84 for Sun, ~3.8 for Earth, ~2.67 for Pluto
+        const normalizedLog = logRadius / 6.0; // 0..~1 range
+        const exaggerated = 0.02 + normalizedLog * 0.15 * t;
+        // Blend toward real at low t
+        const blend = Math.min(t * 2, 1.0);
+        return realSize * (1 - blend) + exaggerated * blend;
       }
 
       // ============================================================
@@ -1229,11 +1235,22 @@ void main() {
           state.camera.azimuth -= dx * 0.3;
           state.camera.elevation = Math.max(-89, Math.min(89, state.camera.elevation + dy * 0.3));
         } else if (dragButton === 2 || dragButton === 1) {
-          // Right/Middle: pan
+          // Right/Middle: pan in screen space
           const panScale = state.camera.distance * 0.002;
           const az = state.camera.azimuth * DEG;
-          state.panX -= (dx * Math.cos(az) + dy * Math.sin(az)) * panScale;
-          state.panY -= (-dx * Math.sin(az) + dy * Math.cos(az)) * panScale * Math.cos(state.camera.elevation * DEG);
+          const el = state.camera.elevation * DEG;
+          // Screen-right vector projected onto XZ plane
+          const rightX = Math.cos(az);
+          const rightZ = -Math.sin(az);
+          // Screen-up vector projected onto XZ plane (accounts for elevation)
+          const upX = Math.sin(az) * Math.sin(el);
+          const upZ = Math.cos(az) * Math.sin(el);
+          // At high elevation (top-down), screen-up maps to forward in world Z
+          const cosEl = Math.cos(el);
+          const fwdX = Math.sin(az) * (cosEl > 0.01 ? 1.0 : Math.sin(el));
+          const fwdZ = Math.cos(az) * (cosEl > 0.01 ? 1.0 : Math.sin(el));
+          state.panX -= (dx * rightX - dy * fwdX) * panScale;
+          state.panY -= (dx * rightZ - dy * fwdZ) * panScale;
         }
         saveState();
       });
@@ -1343,6 +1360,13 @@ void main() {
             state.panX = 0;
             state.panY = 0;
             break;
+          case 'overhead':
+            state.sizeScale = 50;
+            state.distScale = 50;
+            state.camera = { distance: 35, azimuth: 0, elevation: 89 };
+            state.panX = 0;
+            state.panY = 0;
+            break;
         }
         syncUI();
         saveState();
@@ -1368,7 +1392,7 @@ void main() {
 
       function updateSliderLabels() {
         const ss = state.sizeScale;
-        if (ss >= 95) document.getElementById('size-val').textContent = 'Real';
+        if (ss <= 5) document.getElementById('size-val').textContent = 'Real';
         else document.getElementById('size-val').textContent = `${Math.round(1 + ss / 10)}x`;
 
         const ds = state.distScale;
@@ -1573,7 +1597,7 @@ void main() {
         gl.bindVertexArray(quadVAO);
 
         for (const body of bodiesToRender) {
-          const size = body.isSun ? scaleBodySize(body.radius, 0) * 1.5 : scaleBodySize(body.radius, body.a || 1);
+          const size = scaleBodySize(body.radius, body.a || 0);
 
           gl.uniform3fv(uBody.uPosition, body.pos);
           gl.uniform1f(uBody.uSize, size);
