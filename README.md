@@ -24,14 +24,14 @@ A real-time, interactive solar system simulator running entirely in a single HTM
 - **2.5D visualization** — orbital inclinations visible when tilting the view
 
 ### Controls
-| Action | Mouse | Keyboard |
-|--------|-------|----------|
-| Rotate view | Left-drag | — |
-| Pan | Right-drag / Middle-drag | — |
-| Zoom | Scroll wheel | `+` / `-` |
-| Reset view | — | `R` |
-| Top-down view | — | `T` |
-| Pause/Resume | — | `Space` |
+| Action        | Mouse                    | Keyboard  |
+| ------------- | ------------------------ | --------- |
+| Rotate view   | Left-drag                | —         |
+| Pan           | Right-drag / Middle-drag | —         |
+| Zoom          | Scroll wheel             | `+` / `-` |
+| Reset view    | —                        | `R`       |
+| Top-down view | —                        | `T`       |
+| Pause/Resume  | —                        | `Space`   |
 
 ### Display Modes
 - **Body Size Scale** — from exaggerated (visible at overview) to astronomically realistic
@@ -59,26 +59,26 @@ A real-time, interactive solar system simulator running entirely in a single HTM
 
 ## Implementation Status
 
-| Feature | Status |
-|---------|--------|
-| Planetary orbits & positions | ✅ Complete |
-| Dwarf planets | ✅ Complete |
-| Major moons | ✅ Complete |
-| Asteroid belt | ✅ Complete |
+| Feature                           | Status     |
+| --------------------------------- | ---------- |
+| Planetary orbits & positions      | ✅ Complete |
+| Dwarf planets                     | ✅ Complete |
+| Major moons                       | ✅ Complete |
+| Asteroid belt                     | ✅ Complete |
 | Orbit lines with distance scaling | ✅ Complete |
 | Camera controls (rotate/pan/zoom) | ✅ Complete |
-| Size & distance scaling | ✅ Complete |
-| 2.5D tilt view | ✅ Complete |
-| Time simulation | ✅ Complete |
-| Body info on click | ✅ Complete |
-| Saturn rings | ✅ Complete |
-| Star field background | ✅ Complete |
-| localStorage persistence | ✅ Complete |
-| Label overlay | ✅ Complete |
-| Body textures (when zoomed in) | 🔲 Planned |
-| Touch/mobile controls | 🔲 Planned |
-| Orbit trail animation | 🔲 Planned |
-| Search/focus on body | 🔲 Planned |
+| Size & distance scaling           | ✅ Complete |
+| 2.5D tilt view                    | ✅ Complete |
+| Time simulation                   | ✅ Complete |
+| Body info on click                | ✅ Complete |
+| Saturn rings                      | ✅ Complete |
+| Star field background             | ✅ Complete |
+| localStorage persistence          | ✅ Complete |
+| Label overlay                     | ✅ Complete |
+| Body textures (when zoomed in)    | 🔲 Planned  |
+| Touch/mobile controls             | 🔲 Planned  |
+| Orbit trail animation             | 🔲 Planned  |
+| Search/focus on body              | 🔲 Planned  |
 
 ---
 
