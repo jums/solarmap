@@ -1269,7 +1269,7 @@ void main() {
         (e) => {
           e.preventDefault();
           const zoomFactor = 1 + e.deltaY * 0.001;
-          state.camera.distance = Math.max(0.5, Math.min(200, state.camera.distance * zoomFactor));
+          state.camera.distance = Math.max(0.05, Math.min(200, state.camera.distance * zoomFactor));
           saveState();
         },
         { passive: false },
@@ -1299,7 +1299,7 @@ void main() {
       });
 
       function zoomIn() {
-        state.camera.distance = Math.max(0.5, state.camera.distance * 0.75);
+        state.camera.distance = Math.max(0.05, state.camera.distance * 0.75);
         saveState();
       }
       function zoomOut() {
