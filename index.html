@@ -326,8 +326,13 @@ uniform float uInc;
 uniform float uLongNode;
 uniform float uArgPeri;
 uniform vec3 uParentPos;
+uniform float uDistPow;
+uniform float uDistMul;
 in float aAngle;
 out float vAlpha;
+float scaleDist(float au) {
+  return sign(au) * pow(abs(au), uDistPow) * uDistMul;
+}
 void main() {
   float angle = aAngle;
   float r = uA * (1.0 - uE * uE) / (1.0 + uE * cos(angle));
@@ -342,7 +347,7 @@ void main() {
   float y = (sinN*cosW + cosN*sinW*cosI)*x2d + (-sinN*sinW + cosN*cosW*cosI)*y2d;
   float z = (sinW*sinI)*x2d + (cosW*sinI)*y2d;
   
-  vec3 pos = vec3(x, z, y) + uParentPos;
+  vec3 pos = vec3(scaleDist(x), z, scaleDist(y)) + uParentPos;
   gl_Position = uProjection * uView * vec4(pos, 1.0);
   vAlpha = 0.3 + 0.2 * sin(angle * 3.0);
 }`;
@@ -385,13 +390,20 @@ precision highp float;
 uniform mat4 uProjection;
 uniform mat4 uView;
 uniform float uTime;
+uniform float uDistPow;
+uniform float uDistMul;
 in vec3 aOffset; // x=angle offset, y=radius(AU), z=height offset
 in float aSize;
+float scaleDist(float au) {
+  return sign(au) * pow(abs(au), uDistPow) * uDistMul;
+}
 void main() {
   float angle = aOffset.x + uTime * (6.283 / (aOffset.y * sqrt(aOffset.y) * 365.25));
   float r = aOffset.y;
-  float x = r * cos(angle);
-  float z = r * sin(angle);
+  float rawX = r * cos(angle);
+  float rawZ = r * sin(angle);
+  float x = scaleDist(rawX);
+  float z = scaleDist(rawZ);
   float y = aOffset.z;
   gl_Position = uProjection * uView * vec4(x, y, z, 1.0);
   gl_PointSize = aSize;
@@ -407,30 +419,7 @@ void main() {
   fragColor = vec4(0.6, 0.55, 0.5, a);
 }`;
 
-const VERT_LABEL = `#version 300 es
-precision highp float;
-uniform mat4 uProjection;
-uniform mat4 uView;
-uniform vec3 uPosition;
-uniform vec2 uOffset;
-uniform vec2 uScale;
-in vec2 aPos;
-out vec2 vUV;
-void main() {
-  vUV = aPos * 0.5 + 0.5;
-  vec4 center = uProjection * uView * vec4(uPosition, 1.0);
-  vec2 screen = center.xy / center.w;
-  vec2 pos = screen + (uOffset + aPos * uScale) * vec2(2.0 / float(${canvas.width}), 2.0 / float(${canvas.height}));
-  gl_Position = vec4(pos * center.w, center.z, center.w);
-}`;
-
-const FRAG_LABEL = `#version 300 es
-precision highp float;
-out vec4 fragColor;
-uniform vec4 uLabelColor;
-void main() {
-  fragColor = uLabelColor;
-}`;
+// Labels are rendered via DOM overlay for crisp text at any zoom
 
 // Shader compilation helpers
 function compileShader(src, type) {
@@ -472,9 +461,9 @@ function getUniforms(prog, names) {
 }
 
 const uBody = getUniforms(progBody, ["uProjection", "uView", "uPosition", "uSize", "uColor", "uGlow"]);
-const uOrbit = getUniforms(progOrbit, ["uProjection", "uView", "uA", "uB", "uE", "uInc", "uLongNode", "uArgPeri", "uColor", "uParentPos"]);
+const uOrbit = getUniforms(progOrbit, ["uProjection", "uView", "uA", "uB", "uE", "uInc", "uLongNode", "uArgPeri", "uColor", "uParentPos", "uDistPow", "uDistMul"]);
 const uStar = getUniforms(progStar, ["uProjection", "uView"]);
-const uAsteroid = getUniforms(progAsteroid, ["uProjection", "uView", "uTime"]);
+const uAsteroid = getUniforms(progAsteroid, ["uProjection", "uView", "uTime", "uDistPow", "uDistMul"]);
 
 // ============================================================
 // GEOMETRY
@@ -822,8 +811,8 @@ function render(now) {
   const dt = (now - lastFrameTime) / 1000;
   lastFrameTime = now;
   
-  // Advance simulation time
-  simTime += state.timeScale * dt / 86400 * 86400; // days per second
+  // Advance simulation time (timeScale = days per real second)
+  simTime += state.timeScale * dt;
   
   // Update date display
   const displayDate = new Date((simTime - 2440587.5) * 86400000);
@@ -856,9 +845,14 @@ function render(now) {
     gl.useProgram(progAsteroid);
     gl.uniformMatrix4fv(uAsteroid.uProjection, false, proj);
     gl.uniformMatrix4fv(uAsteroid.uView, false, view);
-    // Scale asteroid positions by distance scale
     const timeInDays = simTime - J2000;
     gl.uniform1f(uAsteroid.uTime, timeInDays);
+    // Pass distance scale params to shader
+    const t = state.distScale / 100;
+    const distPow = 0.35 + t * 0.65;
+    const distMul = t >= 0.95 ? 1.0 : (2 - t);
+    gl.uniform1f(uAsteroid.uDistPow, distPow);
+    gl.uniform1f(uAsteroid.uDistMul, distMul);
     gl.bindVertexArray(asteroidVAO);
     gl.drawArrays(gl.POINTS, 0, NUM_ASTEROIDS);
   }
@@ -911,15 +905,21 @@ function render(now) {
     gl.bindVertexArray(orbitVAO);
     gl.depthMask(false);
     
+    // Pass distance scale params
+    const t = state.distScale / 100;
+    const distPow = t >= 0.95 ? 1.0 : (0.35 + t * 0.65);
+    const distMul = t >= 0.95 ? 1.0 : (2 - t);
+    gl.uniform1f(uOrbit.uDistPow, distPow);
+    gl.uniform1f(uOrbit.uDistMul, distMul);
+    
     const drawOrbit = (body, parentPos) => {
       const a = body.a;
-      const scaledA = scaleDistance(a);
-      const b = scaledA * Math.sqrt(1 - body.e * body.e);
+      const b = a * Math.sqrt(1 - body.e * body.e);
       const argPeri = ((body.longPeri || 0) - (body.longNode || 0)) * DEG;
       const inc = (body.i || 0) * DEG;
       const longNode = (body.longNode || 0) * DEG;
       
-      gl.uniform1f(uOrbit.uA, scaledA);
+      gl.uniform1f(uOrbit.uA, a);
       gl.uniform1f(uOrbit.uB, b);
       gl.uniform1f(uOrbit.uE, body.e);
       gl.uniform1f(uOrbit.uInc, inc);
