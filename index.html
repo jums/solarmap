@@ -1173,8 +1173,9 @@ void main() {
         if (r < 1e-10) return [0, 0];
         const t = state.distScale / 100;
         let scaledR;
-        if (t >= 0.95) { scaledR = r; }
-        else {
+        if (t >= 0.95) {
+          scaledR = r;
+        } else {
           const distPow = 0.35 + t * 0.65;
           const distMul = 2 - t;
           scaledR = Math.pow(r, distPow) * distMul;
@@ -1535,16 +1536,16 @@ void main() {
             if (!parent) continue;
             if (!state.filters.planets) continue;
             const parentRawPos = getPosition(parent, simTime);
+            const [parentSx, parentSz] = scaleDistance(parentRawPos[0], parentRawPos[2]);
+            const parentPos = [parentSx, parentRawPos[1], parentSz];
             const moonRelPos = getPosition(m, simTime);
             const moonScale = 8; // exaggerate moon distance from parent for visibility
-            const rawPos = [
-              parentRawPos[0] + moonRelPos[0] * moonScale,
-              parentRawPos[1] + moonRelPos[1] * moonScale,
-              parentRawPos[2] + moonRelPos[2] * moonScale,
+            const pos = [
+              parentPos[0] + moonRelPos[0] * moonScale,
+              parentPos[1] + moonRelPos[1] * moonScale,
+              parentPos[2] + moonRelPos[2] * moonScale,
             ];
-            const [sx, sz] = scaleDistance(rawPos[0], rawPos[2]);
-            const pos = [sx, rawPos[1] * moonScale, sz];
-            bodiesToRender.push({ ...m, pos, rawPos });
+            bodiesToRender.push({ ...m, pos, rawPos: pos });
           }
         }
 
