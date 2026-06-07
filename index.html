@@ -186,7 +186,7 @@ const PLANETS = [
   { name: "Earth", a: 1.000001, e: 0.016709, i: 0.000, longPeri: 102.937, longNode: -11.260, L0: 100.464, period: 1.000017, radius: 6371.0, color: [0.2, 0.5, 0.9], type: "planet" },
   { name: "Mars", a: 1.523679, e: 0.093401, i: 1.850, longPeri: 336.060, longNode: 49.558, L0: 355.453, period: 1.880816, radius: 3389.5, color: [0.85, 0.35, 0.15], type: "planet" },
   { name: "Jupiter", a: 5.202887, e: 0.048498, i: 1.303, longPeri: 14.331, longNode: 100.464, L0: 34.351, period: 11.862, radius: 69911, color: [0.8, 0.7, 0.5], type: "planet" },
-  { name: "Saturn", a: 9.536675, e: 0.054151, i: 2.485, longPeri: 93.057, longNode: 113.665, L0: 49.945, period: 29.457, radius: 58232, color: [0.9, 0.82, 0.55], type: "planet" },
+  { name: "Saturn", a: 9.536675, e: 0.054151, i: 2.485, longPeri: 93.057, longNode: 113.665, L0: 49.945, period: 29.457, radius: 58232, color: [0.9, 0.82, 0.55], type: "planet", hasRings: true, ringInner: 1.24, ringOuter: 2.27 },
   { name: "Uranus", a: 19.18916, e: 0.047168, i: 0.773, longPeri: 173.005, longNode: 74.006, L0: 313.232, period: 84.011, radius: 25362, color: [0.55, 0.8, 0.85], type: "planet" },
   { name: "Neptune", a: 30.06992, e: 0.008586, i: 1.770, longPeri: 48.124, longNode: 131.784, L0: 304.880, period: 164.79, radius: 24622, color: [0.25, 0.4, 0.85], type: "planet" },
 ];
@@ -313,6 +313,41 @@ void main() {
     col += vec3(1.0, 0.85, 0.4) * glow;
   }
   fragColor = vec4(col, edge);
+}`;
+
+const VERT_RING = `#version 300 es
+precision highp float;
+uniform mat4 uProjection;
+uniform mat4 uView;
+uniform vec3 uPosition;
+uniform float uSize;
+uniform float uInnerRatio;
+in vec2 aPos;
+out vec2 vUV;
+void main() {
+  vUV = aPos;
+  vec4 center = uView * vec4(uPosition, 1.0);
+  vec3 offset = vec3(aPos.x * uSize, aPos.y * uSize * 0.3, 0.0);
+  gl_Position = uProjection * (center + vec4(offset, 0.0));
+}`;
+
+const FRAG_RING = `#version 300 es
+precision highp float;
+uniform float uInnerRatio;
+uniform vec3 uColor;
+in vec2 vUV;
+out vec4 fragColor;
+void main() {
+  float dist = length(vec2(vUV.x, vUV.y / 0.3));
+  if (dist > 1.0 || dist < uInnerRatio) discard;
+  float t = (dist - uInnerRatio) / (1.0 - uInnerRatio);
+  float alpha = 0.5 * (1.0 - abs(t * 2.0 - 1.0)) * smoothstep(0.0, 0.05, dist - uInnerRatio) * smoothstep(0.0, 0.05, 1.0 - dist);
+  vec3 col = mix(uColor * 0.7, uColor * 1.2, t);
+  // Add ring gaps
+  float gap1 = smoothstep(0.0, 0.02, abs(t - 0.35));
+  float gap2 = smoothstep(0.0, 0.015, abs(t - 0.62));
+  alpha *= gap1 * gap2;
+  fragColor = vec4(col, alpha * 0.6);
 }`;
 
 const VERT_ORBIT = `#version 300 es
@@ -449,6 +484,7 @@ function createProgram(vSrc, fSrc) {
 
 // Build programs
 const progBody = createProgram(VERT_BODY, FRAG_BODY);
+const progRing = createProgram(VERT_RING, FRAG_RING);
 const progOrbit = createProgram(VERT_ORBIT, FRAG_ORBIT);
 const progStar = createProgram(VERT_STAR, FRAG_STAR);
 const progAsteroid = createProgram(VERT_ASTEROID, FRAG_ASTEROID);
@@ -461,6 +497,7 @@ function getUniforms(prog, names) {
 }
 
 const uBody = getUniforms(progBody, ["uProjection", "uView", "uPosition", "uSize", "uColor", "uGlow"]);
+const uRing = getUniforms(progRing, ["uProjection", "uView", "uPosition", "uSize", "uInnerRatio", "uColor"]);
 const uOrbit = getUniforms(progOrbit, ["uProjection", "uView", "uA", "uB", "uE", "uInc", "uLongNode", "uArgPeri", "uColor", "uParentPos", "uDistPow", "uDistMul"]);
 const uStar = getUniforms(progStar, ["uProjection", "uView"]);
 const uAsteroid = getUniforms(progAsteroid, ["uProjection", "uView", "uTime", "uDistPow", "uDistMul"]);
@@ -859,6 +896,7 @@ function render(now) {
   
   // Collect all bodies to render
   const bodiesToRender = [];
+  lastBodies = bodiesToRender;
   
   // Sun always visible
   bodiesToRender.push({ ...SUN, pos: [0, 0, 0], isSun: true });
@@ -957,8 +995,20 @@ function render(now) {
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
   
-  // Draw labels (simple - we'll use canvas overlay for text in practice)
-  // For now labels handled via DOM overlay below
+  // Draw Saturn's rings
+  gl.useProgram(progRing);
+  gl.uniformMatrix4fv(uRing.uProjection, false, proj);
+  gl.uniformMatrix4fv(uRing.uView, false, view);
+  gl.bindVertexArray(quadVAO);
+  for (const body of bodiesToRender) {
+    if (!body.hasRings) continue;
+    const size = scaleBodySize(body.radius, body.a) * body.ringOuter;
+    gl.uniform3fv(uRing.uPosition, body.pos);
+    gl.uniform1f(uRing.uSize, size);
+    gl.uniform1f(uRing.uInnerRatio, body.ringInner / body.ringOuter);
+    gl.uniform3fv(uRing.uColor, body.color);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
   
   gl.bindVertexArray(null);
   
@@ -1045,6 +1095,56 @@ function updateLabels(bodies, proj, view) {
 function clearLabels() {
   for (const [, el] of labelElements) el.style.display = "none";
 }
+
+// ============================================================
+// BODY INFO ON CLICK
+// ============================================================
+
+let lastBodies = [];
+canvas.addEventListener("click", (e) => {
+  if (isDragging) return;
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX;
+  const my = e.clientY;
+  
+  // Find closest body to click
+  const aspect = canvas.width / canvas.height;
+  const proj = mat4Perspective(45 * DEG, aspect, 0.01, 1000);
+  const eye = getCameraPosition();
+  const center = [state.panX, 0, state.panY];
+  const view = mat4LookAt(eye, center, [0, 1, 0]);
+  
+  let closest = null;
+  let closestDist = 30; // pixel threshold
+  
+  for (const body of lastBodies) {
+    const screen = projectToScreen(body.pos, proj, view);
+    if (!screen) continue;
+    const dx = mx - screen[0];
+    const dy = my - screen[1];
+    const d = Math.sqrt(dx*dx + dy*dy);
+    if (d < closestDist) {
+      closestDist = d;
+      closest = body;
+    }
+  }
+  
+  const infoEl = document.getElementById("body-info");
+  if (closest) {
+    document.getElementById("info-name").textContent = closest.name;
+    const details = [];
+    if (closest.radius) details.push(`Radius: ${closest.radius.toLocaleString()} km`);
+    if (closest.a) details.push(`Semi-major axis: ${closest.a.toFixed(3)} AU`);
+    if (closest.period) details.push(`Orbital period: ${closest.period.toFixed(2)} years`);
+    if (closest.e !== undefined) details.push(`Eccentricity: ${closest.e.toFixed(4)}`);
+    if (closest.i) details.push(`Inclination: ${closest.i.toFixed(2)}°`);
+    if (closest.type) details.push(`Type: ${closest.type}`);
+    document.getElementById("info-details").innerHTML = details.join("<br>");
+    infoEl.style.display = "block";
+  } else {
+    infoEl.style.display = "none";
+  }
+});
 
 // ============================================================
 // INIT & START
