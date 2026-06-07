@@ -1188,7 +1188,8 @@ void main() {
       function scaleBodySize(radiusKm, distanceAU) {
         const t = state.sizeScale / 100;
         const realSize = (radiusKm / AU_KM) * 2; // diameter in AU
-        if (t <= 0.05) return realSize; // fully realistic
+        const minVisible = 0.015; // always at least a dot of light
+        if (t <= 0.05) return Math.max(realSize, minVisible);
         // Log-scale radius so large bodies don't dominate
         // Sun=696340km, Earth=6371km — log ratio compresses Sun much more
         const logRadius = Math.log10(radiusKm + 1); // ~5.84 for Sun, ~3.8 for Earth, ~2.67 for Pluto
@@ -1196,7 +1197,7 @@ void main() {
         const exaggerated = 0.02 + normalizedLog * 0.15 * t;
         // Blend toward real at low t
         const blend = Math.min(t * 2, 1.0);
-        return realSize * (1 - blend) + exaggerated * blend;
+        return Math.max(realSize * (1 - blend) + exaggerated * blend, minVisible);
       }
 
       // ============================================================
