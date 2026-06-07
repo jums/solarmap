@@ -1189,7 +1189,7 @@ void main() {
         const t = state.sizeScale / 100;
         const realSize = (radiusKm / AU_KM) * 2; // diameter in AU
         // Screen-space minimum: scales with camera distance so it's always a small dot
-        const minVisible = state.camera.distance * 0.004;
+        const minVisible = state.camera.distance * 0.001;
         if (t <= 0.05) return Math.max(realSize, minVisible);
         // Log-scale radius so large bodies don't dominate
         const logRadius = Math.log10(radiusKm + 1);
