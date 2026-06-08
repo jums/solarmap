@@ -155,6 +155,11 @@
       .nav-btn:hover {
         background: rgba(127, 219, 255, 0.15);
       }
+      .preset-btn.active {
+        background: rgba(127, 219, 255, 0.25);
+        border-color: #7fdbff;
+        color: #fff;
+      }
 
       /* Info tooltip */
       #body-info {
@@ -273,32 +278,36 @@
       </div>
 
       <div id="display-panel" class="panel">
-        <h3>Display</h3>
-        <div class="slider-row">
-          <div class="slider-label"><span>Body Size Scale</span><span id="size-val">5x</span></div>
-          <input type="range" id="size-scale" min="0" max="100" value="30" />
-        </div>
-        <div class="slider-row">
-          <div class="slider-label"><span>Distance Scale</span><span id="dist-val">Log</span></div>
-          <input type="range" id="dist-scale" min="0" max="100" value="50" />
-        </div>
+        <h3>Scale</h3>
+        <button
+          class="nav-btn preset-btn"
+          id="preset-realistic"
+          style="width: 100%; height: auto; padding: 6px; font-size: 0.72rem; margin: 3px 0"
+          onclick="applyPreset('realistic')"
+        >
+          Realistic
+        </button>
+        <button
+          class="nav-btn preset-btn"
+          id="preset-light"
+          style="width: 100%; height: auto; padding: 6px; font-size: 0.72rem; margin: 3px 0"
+          onclick="applyPreset('light')"
+        >
+          Enhanced
+        </button>
+        <button
+          class="nav-btn preset-btn"
+          id="preset-heavy"
+          style="width: 100%; height: auto; padding: 6px; font-size: 0.72rem; margin: 3px 0"
+          onclick="applyPreset('heavy')"
+        >
+          Schematic
+        </button>
+        <h3 style="margin-top: 14px">View</h3>
         <div class="slider-row">
           <div class="slider-label"><span>Tilt (3D)</span><span id="tilt-val">25°</span></div>
           <input type="range" id="tilt-angle" min="0" max="90" value="25" />
         </div>
-        <h3 style="margin-top: 14px">Presets</h3>
-        <button class="nav-btn" style="width: 100%; height: auto; padding: 6px; font-size: 0.72rem; margin: 3px 0" onclick="applyPreset('realistic')">
-          Full Realism
-        </button>
-        <button class="nav-btn" style="width: 100%; height: auto; padding: 6px; font-size: 0.72rem; margin: 3px 0" onclick="applyPreset('overview')">
-          Overview
-        </button>
-        <button class="nav-btn" style="width: 100%; height: auto; padding: 6px; font-size: 0.72rem; margin: 3px 0" onclick="applyPreset('inner')">
-          Inner System
-        </button>
-        <button class="nav-btn" style="width: 100%; height: auto; padding: 6px; font-size: 0.72rem; margin: 3px 0" onclick="applyPreset('overhead')">
-          Overhead
-        </button>
       </div>
 
       <div id="nav-controls">
@@ -718,10 +727,59 @@
       // STATE
       // ============================================================
 
+      // ============================================================
+      // SCALE PRESETS
+      // ============================================================
+
+      // Radius ranges: body radius (km) matched to threshold, gets that multiplier
+      // on its real AU diameter. Ranges are checked in order (first match wins).
+      const SCALE_PRESETS = {
+        realistic: {
+          label: 'Realistic',
+          radiusRanges: [{ maxRadius: Infinity, multiplier: 1 }],
+          sunMultiplier: 1,
+          minDotSize: 0.003,
+          moonClearanceFactor: 1.0,
+          distPow: 1.0,
+          distMul: 1.0,
+        },
+        light: {
+          label: 'Enhanced',
+          radiusRanges: [
+            { maxRadius: 2000, multiplier: 3000 }, // small moons & bodies
+            { maxRadius: 20000, multiplier: 800 }, // terrestrial planets
+            { maxRadius: 100000, multiplier: 200 }, // gas/ice giants
+            { maxRadius: Infinity, multiplier: 50 }, // Sun
+          ],
+          sunMultiplier: 10,
+          minDotSize: 0.006,
+          moonClearanceFactor: 2.5,
+          distPow: 0.7,
+          distMul: 1.5,
+        },
+        heavy: {
+          label: 'Schematic',
+          radiusRanges: [
+            { maxRadius: 2000, multiplier: 8000 }, // small moons & bodies
+            { maxRadius: 20000, multiplier: 2000 }, // terrestrial planets
+            { maxRadius: 100000, multiplier: 200 }, // gas/ice giants
+            { maxRadius: Infinity, multiplier: 100 }, // Sun
+          ],
+          sunMultiplier: 20,
+          minDotSize: 0.01,
+          moonClearanceFactor: 4.0,
+          distPow: 0.45,
+          distMul: 2.0,
+        },
+      };
+
+      function getActivePreset() {
+        return SCALE_PRESETS[state.scalePreset] || SCALE_PRESETS.light;
+      }
+
       const DEFAULT_STATE = {
         filters: { planets: true, dwarf: true, moons: true, asteroids: true, orbits: true, labels: true },
-        sizeScale: 30,
-        distScale: 50,
+        scalePreset: 'light',
         tiltAngle: 25,
         timeScale: 1,
         camera: { distance: 35, azimuth: 0, elevation: 25 },
@@ -1166,37 +1224,59 @@ void main() {
         return [x, z, y]; // swap Y/Z for our coordinate system (Y=up)
       }
 
-      // Scale distance based on slider (0=compressed, 50=log, 100=linear/realistic)
-      // Scales the radius (distance from origin), not individual x/y, to preserve circular orbits
+      // Scale distance using active preset's compression
       function scaleDistance(x, y) {
         const r = Math.sqrt(x * x + y * y);
         if (r < 1e-10) return [0, 0];
-        const t = state.distScale / 100;
+        const preset = getActivePreset();
         let scaledR;
-        if (t >= 0.95) {
-          scaledR = r;
+        if (preset.distPow >= 1.0) {
+          scaledR = r * preset.distMul;
         } else {
-          const distPow = 0.35 + t * 0.65;
-          const distMul = 2 - t;
-          scaledR = Math.pow(r, distPow) * distMul;
+          scaledR = Math.pow(r, preset.distPow) * preset.distMul;
         }
         const ratio = scaledR / r;
         return [x * ratio, y * ratio];
       }
 
-      // Scale body size based on slider
-      function scaleBodySize(radiusKm, distanceAU) {
-        const t = state.sizeScale / 100;
-        const realSize = (radiusKm / AU_KM) * 2; // diameter in AU
-        // Screen-space minimum: scales with camera distance so it's always a small dot
-        const minVisible = state.camera.distance * 0.001;
-        if (t <= 0.05) return Math.max(realSize, minVisible);
-        // Log-scale radius so large bodies don't dominate
-        const logRadius = Math.log10(radiusKm + 1);
-        const normalizedLog = logRadius / 6.0;
-        const exaggerated = 0.02 + normalizedLog * 0.15 * t;
-        const blend = Math.min(t * 2, 1.0);
-        return Math.max(realSize * (1 - blend) + exaggerated * blend, minVisible);
+      // Scale body size using active preset's radius-range multipliers
+      function scaleBodySize(radiusKm) {
+        const preset = getActivePreset();
+        const realDiameter = (radiusKm / AU_KM) * 2; // diameter in AU
+
+        // Sun uses explicit cap
+        if (radiusKm > 100000) {
+          return Math.max(realDiameter * preset.sunMultiplier, preset.minDotSize);
+        }
+
+        // Find matching radius range (first match wins)
+        for (const range of preset.radiusRanges) {
+          if (radiusKm <= range.maxRadius) {
+            return Math.max(realDiameter * range.multiplier, preset.minDotSize);
+          }
+        }
+
+        // Fallback (shouldn't reach here)
+        return Math.max(realDiameter, preset.minDotSize);
+      }
+
+      // Compute a single moon orbit scale factor per parent planet.
+      // Based on the innermost moon's orbit — ensures it clears the parent's displayed size.
+      // The same factor is applied to all moons of that parent, preserving relative spacing.
+      function getParentMoonScale(parentRadiusKm, innermostMoonA) {
+        const preset = getActivePreset();
+        const parentDisplaySize = scaleBodySize(parentRadiusKm);
+        // Ensure the innermost moon orbit clears the parent's visual radius
+        const minOrbitRadius = (preset.moonClearanceFactor * parentDisplaySize) / 2;
+        return Math.max(1.0, minOrbitRadius / innermostMoonA);
+      }
+
+      // Pre-compute innermost moon semi-major axis per parent
+      const INNERMOST_MOON_A = {};
+      for (const m of MOONS) {
+        if (!INNERMOST_MOON_A[m.parent] || m.a < INNERMOST_MOON_A[m.parent]) {
+          INNERMOST_MOON_A[m.parent] = m.a;
+        }
       }
 
       // ============================================================
@@ -1341,33 +1421,8 @@ void main() {
       // ============================================================
 
       function applyPreset(name) {
-        switch (name) {
-          case 'realistic':
-            state.sizeScale = 0;
-            state.distScale = 100;
-            state.camera.distance = 50;
-            break;
-          case 'overview':
-            state.sizeScale = 50;
-            state.distScale = 50;
-            state.camera = { distance: 35, azimuth: 0, elevation: 25 };
-            state.panX = 0;
-            state.panY = 0;
-            break;
-          case 'inner':
-            state.sizeScale = 60;
-            state.distScale = 70;
-            state.camera = { distance: 8, azimuth: 0, elevation: 20 };
-            state.panX = 0;
-            state.panY = 0;
-            break;
-          case 'overhead':
-            state.sizeScale = 50;
-            state.distScale = 50;
-            state.camera = { distance: 35, azimuth: 0, elevation: 89 };
-            state.panX = 0;
-            state.panY = 0;
-            break;
+        if (SCALE_PRESETS[name]) {
+          state.scalePreset = name;
         }
         syncUI();
         saveState();
@@ -1384,24 +1439,13 @@ void main() {
         document.getElementById('f-asteroids').checked = state.filters.asteroids;
         document.getElementById('f-orbits').checked = state.filters.orbits;
         document.getElementById('f-labels').checked = state.filters.labels;
-        document.getElementById('size-scale').value = state.sizeScale;
-        document.getElementById('dist-scale').value = state.distScale;
         document.getElementById('tilt-angle').value = state.tiltAngle;
-        updateSliderLabels();
-        updateTimeDisplay();
-      }
-
-      function updateSliderLabels() {
-        const ss = state.sizeScale;
-        if (ss <= 5) document.getElementById('size-val').textContent = 'Real';
-        else document.getElementById('size-val').textContent = `${Math.round(1 + ss / 10)}x`;
-
-        const ds = state.distScale;
-        if (ds >= 95) document.getElementById('dist-val').textContent = 'Real';
-        else if (ds >= 40) document.getElementById('dist-val').textContent = 'Log';
-        else document.getElementById('dist-val').textContent = 'Compact';
-
         document.getElementById('tilt-val').textContent = `${state.tiltAngle}°`;
+        // Highlight active preset button
+        document.querySelectorAll('.preset-btn').forEach((btn) => {
+          btn.classList.toggle('active', btn.id === `preset-${state.scalePreset}`);
+        });
+        updateTimeDisplay();
       }
 
       // Wire up UI controls
@@ -1430,20 +1474,10 @@ void main() {
         saveState();
       });
 
-      document.getElementById('size-scale').addEventListener('input', (e) => {
-        state.sizeScale = +e.target.value;
-        updateSliderLabels();
-        saveState();
-      });
-      document.getElementById('dist-scale').addEventListener('input', (e) => {
-        state.distScale = +e.target.value;
-        updateSliderLabels();
-        saveState();
-      });
       document.getElementById('tilt-angle').addEventListener('input', (e) => {
         state.tiltAngle = +e.target.value;
         state.camera.elevation = +e.target.value;
-        updateSliderLabels();
+        document.getElementById('tilt-val').textContent = `${state.tiltAngle}°`;
         saveState();
       });
 
@@ -1495,12 +1529,10 @@ void main() {
           gl.uniformMatrix4fv(uAsteroid.uView, false, view);
           const timeInDays = simTime - J2000;
           gl.uniform1f(uAsteroid.uTime, timeInDays);
-          // Pass distance scale params to shader
-          const t = state.distScale / 100;
-          const distPow = 0.35 + t * 0.65;
-          const distMul = t >= 0.95 ? 1.0 : 2 - t;
-          gl.uniform1f(uAsteroid.uDistPow, distPow);
-          gl.uniform1f(uAsteroid.uDistMul, distMul);
+          // Pass distance scale params from active preset
+          const aPreset = getActivePreset();
+          gl.uniform1f(uAsteroid.uDistPow, aPreset.distPow);
+          gl.uniform1f(uAsteroid.uDistMul, aPreset.distMul);
           gl.bindVertexArray(asteroidVAO);
           gl.drawArrays(gl.POINTS, 0, NUM_ASTEROIDS);
         }
@@ -1539,30 +1571,28 @@ void main() {
             const [parentSx, parentSz] = scaleDistance(parentRawPos[0], parentRawPos[2]);
             const parentPos = [parentSx, parentRawPos[1], parentSz];
             const moonRelPos = getPosition(m, simTime);
-            const moonScale = 8; // exaggerate moon distance from parent for visibility
+            const moonScale = getParentMoonScale(parent.radius, INNERMOST_MOON_A[m.parent]);
             const pos = [
               parentPos[0] + moonRelPos[0] * moonScale,
               parentPos[1] + moonRelPos[1] * moonScale,
               parentPos[2] + moonRelPos[2] * moonScale,
             ];
-            bodiesToRender.push({ ...m, pos, rawPos: pos });
+            bodiesToRender.push({ ...m, pos, rawPos: pos, moonScale, parentPos });
           }
         }
 
         // Draw orbit lines
         if (state.filters.orbits) {
+          const preset = getActivePreset();
           gl.useProgram(progOrbit);
           gl.uniformMatrix4fv(uOrbit.uProjection, false, proj);
           gl.uniformMatrix4fv(uOrbit.uView, false, view);
           gl.bindVertexArray(orbitVAO);
           gl.depthMask(false);
 
-          // Pass distance scale params
-          const t = state.distScale / 100;
-          const distPow = t >= 0.95 ? 1.0 : 0.35 + t * 0.65;
-          const distMul = t >= 0.95 ? 1.0 : 2 - t;
-          gl.uniform1f(uOrbit.uDistPow, distPow);
-          gl.uniform1f(uOrbit.uDistMul, distMul);
+          // Distance scale from active preset
+          gl.uniform1f(uOrbit.uDistPow, preset.distPow);
+          gl.uniform1f(uOrbit.uDistMul, preset.distMul);
 
           const drawOrbit = (body, parentPos) => {
             const a = body.a;
@@ -1588,6 +1618,19 @@ void main() {
           if (state.filters.dwarf) {
             for (const d of DWARF_PLANETS) drawOrbit(d, [0, 0, 0]);
           }
+
+          // Draw moon orbits (use moonScale as multiplier, distPow=1 for local orbit)
+          if (state.filters.moons && state.filters.planets) {
+            for (const body of bodiesToRender) {
+              if (body.type !== 'moon' || !body.moonScale || !body.parentPos) continue;
+              gl.uniform1f(uOrbit.uDistPow, 1.0);
+              gl.uniform1f(uOrbit.uDistMul, body.moonScale);
+              drawOrbit(body, body.parentPos);
+            }
+            // Restore planet distance params
+            gl.uniform1f(uOrbit.uDistPow, preset.distPow);
+            gl.uniform1f(uOrbit.uDistMul, preset.distMul);
+          }
           gl.depthMask(true);
         }
 
@@ -1598,7 +1641,7 @@ void main() {
         gl.bindVertexArray(quadVAO);
 
         for (const body of bodiesToRender) {
-          const size = scaleBodySize(body.radius, body.a || 0);
+          const size = scaleBodySize(body.radius);
 
           gl.uniform3fv(uBody.uPosition, body.pos);
           gl.uniform1f(uBody.uSize, size);
@@ -1614,7 +1657,7 @@ void main() {
         gl.bindVertexArray(quadVAO);
         for (const body of bodiesToRender) {
           if (!body.hasRings) continue;
-          const size = scaleBodySize(body.radius, body.a) * body.ringOuter;
+          const size = scaleBodySize(body.radius) * body.ringOuter;
           gl.uniform3fv(uRing.uPosition, body.pos);
           gl.uniform1f(uRing.uSize, size);
           gl.uniform1f(uRing.uInnerRatio, body.ringInner / body.ringOuter);
