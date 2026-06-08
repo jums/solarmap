@@ -1238,15 +1238,18 @@ void main() {
         return Math.max(realDiameter, preset.minDotSize);
       }
 
-      // Compute a single moon orbit scale factor per parent planet.
-      // Based on the innermost moon's orbit — ensures it clears the parent's displayed size.
-      // The same factor is applied to all moons of that parent, preserving relative spacing.
-      function getParentMoonScale(parentRadiusKm, innermostMoonA) {
+      // Compute per-moon orbit scale with sqrt compression.
+      // Ensures innermost moon clears parent, outer moons don't fly away.
+      // Result: displayed distance = minOrbit * sqrt(moonA / innermostA)
+      function getMoonOrbitScale(moonA, parentRadiusKm, innermostMoonA) {
         const preset = getActivePreset();
         const parentDisplaySize = scaleBodySize(parentRadiusKm);
-        // Ensure the innermost moon orbit clears the parent's visual radius
-        const minOrbitRadius = (preset.moonClearanceFactor * parentDisplaySize) / 2;
-        return Math.max(1.0, minOrbitRadius / innermostMoonA);
+        // Innermost moon must clear the parent's full visual radius
+        const minOrbitRadius = preset.moonClearanceFactor * parentDisplaySize;
+        // Sqrt compression: inner moons get pushed out, outer moons grow sub-linearly
+        const ratio = moonA / innermostMoonA; // >= 1.0
+        const compressedDist = minOrbitRadius * Math.sqrt(ratio);
+        return Math.max(1.0, compressedDist / moonA);
       }
 
       // Pre-compute innermost moon semi-major axis per parent
@@ -1549,7 +1552,7 @@ void main() {
             const [parentSx, parentSz] = scaleDistance(parentRawPos[0], parentRawPos[2]);
             const parentPos = [parentSx, parentRawPos[1], parentSz];
             const moonRelPos = getPosition(m, simTime);
-            const moonScale = getParentMoonScale(parent.radius, INNERMOST_MOON_A[m.parent]);
+            const moonScale = getMoonOrbitScale(m.a, parent.radius, INNERMOST_MOON_A[m.parent]);
             const pos = [
               parentPos[0] + moonRelPos[0] * moonScale,
               parentPos[1] + moonRelPos[1] * moonScale,
@@ -1686,7 +1689,9 @@ void main() {
 
       function updateLabels(bodies, proj, view) {
         const activeNames = new Set();
-        const moonLabelZoomThreshold = 2; // moon labels only visible when zoomed in past this distance
+        const preset = getActivePreset();
+        // Show moon labels earlier in enhanced mode since moons are more visible
+        const moonLabelZoomThreshold = preset === SCALE_PRESETS.realistic ? 2 : 12;
 
         for (const body of bodies) {
           if (body.isSun && state.camera.distance > 80) continue;
@@ -1702,6 +1707,17 @@ void main() {
             continue;
           }
 
+          // Compute screen-space radius of the body to offset the label above it
+          const size = scaleBodySize(body.radius);
+          const offsetPos = [body.pos[0], body.pos[1], body.pos[2]];
+          // Project a point offset by body size upward in view space to get pixel radius
+          const screenTop = projectToScreen([body.pos[0], body.pos[1] + size, body.pos[2]], proj, view);
+          let pixelOffset = 14; // minimum offset
+          if (screenTop) {
+            const bodyPixelRadius = Math.abs(screen[1] - screenTop[1]);
+            pixelOffset = Math.max(14, bodyPixelRadius + 4);
+          }
+
           let el = labelElements.get(body.name);
           if (!el) {
             el = document.createElement('span');
@@ -1714,7 +1730,7 @@ void main() {
 
           el.style.display = 'block';
           el.style.left = screen[0] + 'px';
-          el.style.top = screen[1] - 12 + 'px';
+          el.style.top = screen[1] - pixelOffset + 'px';
 
           // Dim moons and dwarf planets slightly
           if (body.type === 'moon') el.style.fontSize = '8px';
