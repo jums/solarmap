@@ -1708,15 +1708,17 @@ void main() {
           }
 
           // Compute screen-space radius of the body to offset the label above it
+          // Use view-space projection: the body billboard is `size` units in world,
+          // so its pixel radius = size / viewDepth * projScaleY * screenHeight/2
           const size = scaleBodySize(body.radius);
-          const offsetPos = [body.pos[0], body.pos[1], body.pos[2]];
-          // Project a point offset by body size upward in view space to get pixel radius
-          const screenTop = projectToScreen([body.pos[0], body.pos[1] + size, body.pos[2]], proj, view);
-          let pixelOffset = 14; // minimum offset
-          if (screenTop) {
-            const bodyPixelRadius = Math.abs(screen[1] - screenTop[1]);
-            pixelOffset = Math.max(14, bodyPixelRadius + 4);
-          }
+          // Compute view-space Z depth of body center
+          const vx = view[0] * body.pos[0] + view[4] * body.pos[1] + view[8] * body.pos[2] + view[12];
+          const vy = view[1] * body.pos[0] + view[5] * body.pos[1] + view[9] * body.pos[2] + view[13];
+          const vz = view[2] * body.pos[0] + view[6] * body.pos[1] + view[10] * body.pos[2] + view[14];
+          const depth = -vz; // positive distance from camera
+          const fovScale = 1.0 / Math.tan((45 * DEG) / 2); // matches projection FOV
+          const bodyPixelRadius = depth > 0.001 ? (size / depth) * fovScale * (window.innerHeight / 2) : 14;
+          const pixelOffset = Math.max(14, bodyPixelRadius + 4);
 
           let el = labelElements.get(body.name);
           if (!el) {
