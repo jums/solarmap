@@ -1295,7 +1295,10 @@ void main() {
         if (dragButton === 0) {
           // Left: rotate
           state.camera.azimuth -= dx * 0.3;
-          state.camera.elevation = Math.max(-89, Math.min(89, state.camera.elevation + dy * 0.3));
+          state.camera.elevation = Math.max(0, Math.min(90, state.camera.elevation + dy * 0.3));
+          state.tiltAngle = Math.round(state.camera.elevation);
+          document.getElementById('tilt-angle').value = state.tiltAngle;
+          document.getElementById('tilt-val').textContent = `${state.tiltAngle}°`;
         } else if (dragButton === 2 || dragButton === 1) {
           // Right/Middle: pan in screen space
           const panScale = state.camera.distance * 0.002;
