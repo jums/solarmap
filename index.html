@@ -295,14 +295,6 @@
         >
           Enhanced
         </button>
-        <button
-          class="nav-btn preset-btn"
-          id="preset-heavy"
-          style="width: 100%; height: auto; padding: 6px; font-size: 0.72rem; margin: 3px 0"
-          onclick="applyPreset('heavy')"
-        >
-          Schematic
-        </button>
         <h3 style="margin-top: 14px">View</h3>
         <div class="slider-row">
           <div class="slider-label"><span>Tilt (3D)</span><span id="tilt-val">25°</span></div>
@@ -756,20 +748,6 @@
           moonClearanceFactor: 2.5,
           distPow: 0.7,
           distMul: 1.5,
-        },
-        heavy: {
-          label: 'Schematic',
-          radiusRanges: [
-            { maxRadius: 2000, multiplier: 8000 }, // small moons & bodies
-            { maxRadius: 20000, multiplier: 2000 }, // terrestrial planets
-            { maxRadius: 100000, multiplier: 200 }, // gas/ice giants
-            { maxRadius: Infinity, multiplier: 100 }, // Sun
-          ],
-          sunMultiplier: 20,
-          minDotSize: 0.01,
-          moonClearanceFactor: 4.0,
-          distPow: 0.45,
-          distMul: 2.0,
         },
       };
 
